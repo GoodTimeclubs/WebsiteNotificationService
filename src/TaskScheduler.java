@@ -19,7 +19,7 @@ public class TaskScheduler {
         this.registeredTasks = new MonitorEntry[0];
     }
 
-    // Lazy singleton accessor (not thread-safe — fine for current single-threaded use).
+    // Thread-safe lazy singleton accessor (synchronized to avoid duplicate instances).
     public static synchronized TaskScheduler getInstance() {
         if (instance == null) {
             instance = new TaskScheduler();
@@ -36,7 +36,7 @@ public class TaskScheduler {
             registeredTasks[lenmin1] = entry;
 
         }
-        if (running == false && stop == false) {
+        if (!running && !stop) {
             running = true;
             Thread loop = new Thread(() -> {
                 try {
@@ -45,17 +45,17 @@ public class TaskScheduler {
                     e.printStackTrace();
                 }
             });
-            loop.setDaemon(true);
+            //loop.setDaemon(true);
             loop.start();
         }
         return lenmin1;
     }
 
-    // Remove a registered task that matches URL, frequency and channel.
+    // Remove the registered task at the given index, shifting the remaining entries left.
     public void  removeTask(int index){
         synchronized(lock) {
             if (index != -1) {
-                for (int i = 0; i < registeredTasks.length - index; i++) {
+                for (int i = 0; i < registeredTasks.length - index-1; i++) {
                     registeredTasks[i + index] = registeredTasks[i + index + 1];
                 }
 
@@ -64,6 +64,7 @@ public class TaskScheduler {
         }
     }
 
+    // Scan one entry, store its new hash, and notify subscribers if the content changed.
     public void scanAndcheck(MonitorEntry entry) throws IOException, NoSuchAlgorithmException, InterruptedException {
         GetWebsite scaner = new GetWebsite();
         CheckDifference check = new CheckDifference();
@@ -84,17 +85,17 @@ public class TaskScheduler {
                 snapshot = registeredTasks;   //save to avoid races
             }
 
-            for (int i = 0; i < snapshot.length; i++) {
-                if (snapshot[i].getFreq() == Frequency.high && Duration.between(snapshot[i].lastChecked, Instant.now()).toMinutes() > 1) {
-                    scanAndcheck(snapshot[i]);
+            for (MonitorEntry entry : snapshot) {
+                if (entry.getFreq() == Frequency.high && Duration.between(entry.lastChecked, Instant.now()).toMinutes() > 1) {
+                    scanAndcheck(entry);
                 }
-                if (snapshot[i].getFreq() == Frequency.mid && Duration.between(snapshot[i].lastChecked, Instant.now()).toHours() > 1) {
-                    scanAndcheck(snapshot[i]);
+                if (entry.getFreq() == Frequency.mid && Duration.between(entry.lastChecked, Instant.now()).toHours() > 1) {
+                    scanAndcheck(entry);
                 }
-                if (snapshot[i].getFreq() == Frequency.low && Duration.between(snapshot[i].lastChecked, Instant.now()).toHours() > 5) {
-                    scanAndcheck(snapshot[i]);
+                if (entry.getFreq() == Frequency.low && Duration.between(entry.lastChecked, Instant.now()).toHours() > 5) {
+                    scanAndcheck(entry);
                 }
-                //System.out.println(now + "Task execution checked for " + registeredTasks.length + " active Tasks.");
+                //System.out.println("Task execution checked for " + registeredTasks.length + " active Tasks.");
             }
             Thread.sleep(1000);
             
@@ -103,6 +104,7 @@ public class TaskScheduler {
 
     }
 
+    // Return the index of a task matching url and frequency, or -1 if none exists.
     public int existingTask(String url, Frequency freq){
         synchronized(lock) {
             for (int i = 0; i < registeredTasks.length; i++) {
@@ -114,17 +116,20 @@ public class TaskScheduler {
         return -1;
     }
 
-    public void addSubscription(String url, Frequency freq, User user) throws IOException, NoSuchAlgorithmException, InterruptedException {
+    // Subscribe a user to a url: reuse the matching task if it exists, otherwise create one.
+    public void addSubscription(String url, Frequency freq, User user) {
         int posExisting = existingTask(url, freq);
         synchronized(lock) {
             if (posExisting >= 0) {
                 registeredTasks[posExisting].addUser(user);
             } else {
-                registeredTasks[addTask(new MonitorEntry(url, freq))].addUser(user);
+                int idx = addTask(new MonitorEntry(url, freq));
+                registeredTasks[idx].addUser(user);
             }
         }
     }
 
+    // Unsubscribe a user from a url; drops the whole task once it has no subscribers left.
     public void removeSubscription(String url, Frequency freq, User user) throws Exception {
         int index = existingTask(url, freq);
         synchronized(lock) {

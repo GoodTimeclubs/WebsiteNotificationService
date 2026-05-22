@@ -3,8 +3,8 @@ import java.util.Arrays;
 
 // One watched URL: scan settings, last/new content hashes, and the users to notify on change.
 public class MonitorEntry {
-    private String url;
-    private Frequency freq;
+    private final String url;
+    private final Frequency freq;
     private String lastScanHash;
     private String newScanHash;
     public Instant lastChecked;
@@ -21,18 +21,9 @@ public class MonitorEntry {
         return url;
     }
 
-    public void setUrl(String url) {
-        this.url = url;
-    }
-
     public Frequency getFreq() {
         return freq;
     }
-
-    public void setFreq(Frequency freq) {
-        this.freq = freq;
-    }
-
 
     public String getLastScanHash() {
         return lastScanHash;
@@ -67,7 +58,7 @@ public class MonitorEntry {
         }
 
         if (index != -1){
-            for (int i = 0; i < subscribedUsers.length - index; i++){
+            for (int i = 0; i < subscribedUsers.length - index-1; i++){
                 subscribedUsers[i+index] = subscribedUsers[i+index+1];
             }
 
@@ -78,9 +69,10 @@ public class MonitorEntry {
         }
     }
 
+    // Notify every subscribed user that this entry's URL has changed (observer pattern).
     public void notifyObservers(){
-        for (int i = 0; i < subscribedUsers.length;i++){
-            subscribedUsers[i].update(this.url);
+        for (User subscribedUser : subscribedUsers) {
+            subscribedUser.update(this.url);
         }
     }
 
