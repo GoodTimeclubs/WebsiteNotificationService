@@ -3,22 +3,24 @@ import java.security.NoSuchAlgorithmException;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Arrays;
+import java.util.Objects;
 
 
 // Singleton scheduler that periodically scans every registered MonitorEntry per its Frequency.
 public class TaskScheduler {
     private MonitorEntry[] registeredTasks;
-    public boolean stop = false;
-    public boolean running = false;
+    public volatile boolean stop = false;
+    public volatile boolean running = false;
 
     private static TaskScheduler instance;
+    private final Object lock = new Object();
 
     private TaskScheduler() {
         this.registeredTasks = new MonitorEntry[0];
     }
 
-    // Lazy singleton accessor (not thread-safe — fine for current single-threaded use).
-    public static TaskScheduler getInstance() {
+    // Thread-safe lazy singleton accessor (synchronized to avoid duplicate instances).
+    public static synchronized TaskScheduler getInstance() {
         if (instance == null) {
             instance = new TaskScheduler();
         }
@@ -26,58 +28,118 @@ public class TaskScheduler {
     }
 
     // Register a new monitor entry; auto-starts the scan loop on the first task.
-    public void addTask(MonitorEntry entry) throws IOException, NoSuchAlgorithmException, InterruptedException {
-        registeredTasks = Arrays.copyOf(registeredTasks, registeredTasks.length + 1);
-        registeredTasks[registeredTasks.length-1] = entry;
-        if(running == false && stop == false){
-            this.start();
+    public int addTask(MonitorEntry entry) {
+        int lenmin1;
+        synchronized (lock) {
+            registeredTasks = Arrays.copyOf(registeredTasks, registeredTasks.length + 1);
+            lenmin1 = registeredTasks.length - 1;
+            registeredTasks[lenmin1] = entry;
+
+        }
+        if (!running && !stop) {
             running = true;
+            Thread loop = new Thread(() -> {
+                try {
+                    this.start();
+                } catch (Exception e) {
+                    e.printStackTrace();
+                }
+            });
+            //loop.setDaemon(true);
+            loop.start();
+        }
+        return lenmin1;
+    }
+
+    // Remove the registered task at the given index, shifting the remaining entries left.
+    public void  removeTask(int index){
+        synchronized(lock) {
+            if (index != -1) {
+                for (int i = 0; i < registeredTasks.length - index-1; i++) {
+                    registeredTasks[i + index] = registeredTasks[i + index + 1];
+                }
+
+                registeredTasks = Arrays.copyOf(registeredTasks, registeredTasks.length - 1);
+            }
         }
     }
 
-    // Remove a registered task that matches URL, frequency and channel.
-    public void removeTask(MonitorEntry entry){
-        int index = -1;
-        for (int i = 0; i < registeredTasks.length; i++) {
-            if (registeredTasks[i].getUrl().equals(entry.getUrl()) && registeredTasks[i].getFreq() == entry.getFreq() && registeredTasks[i].getCommunicationChannel().equals(entry.getCommunicationChannel())) {
-                index = i;
-                break;
-            }
+    // Scan one entry, store its new hash, and notify subscribers if the content changed.
+    public void scanAndcheck(MonitorEntry entry) throws IOException, NoSuchAlgorithmException, InterruptedException {
+        GetWebsite scaner = new GetWebsite();
+        CheckDifference check = new CheckDifference();
+
+        scaner.startScanner(entry);
+        entry.lastChecked = Instant.now();
+        if (check.checkHashDifference(entry)) {
+            entry.notifyObservers();
         }
 
-        if (index != -1){
-            for (int i = 0; i < registeredTasks.length - index; i++){
-                registeredTasks[i+index] = registeredTasks[i+index+1];
-            }
-
-            registeredTasks = Arrays.copyOf(registeredTasks, registeredTasks.length-1);
-        }
     }
 
     // Main loop: polls each task and triggers a scan once its frequency interval elapsed.
     public void start() throws IOException, NoSuchAlgorithmException, InterruptedException {
-        GetWebsite scaner = new GetWebsite();
         while (!stop) {
-            Instant now = Instant.now();
-
-            for (int i = 0; i < registeredTasks.length; i++) {
-                if (registeredTasks[i].getFreq() == Frequency.high && Duration.between(registeredTasks[i].lastChecked, now).toMinutes() > 1) {
-                    scaner.startScanner(registeredTasks[i]);
-                    registeredTasks[i].lastChecked = now;
-                }
-                if (registeredTasks[i].getFreq() == Frequency.mid && Duration.between(registeredTasks[i].lastChecked, now).toHours() > 1) {
-                    scaner.startScanner(registeredTasks[i]);
-                    registeredTasks[i].lastChecked = now;
-                }
-                if (registeredTasks[i].getFreq() == Frequency.low && Duration.between(registeredTasks[i].lastChecked, now).toHours() > 5) {
-                    scaner.startScanner(registeredTasks[i]);
-                    registeredTasks[i].lastChecked = now;
-                }
-            //System.out.println(now + "Task execution checked for " + registeredTasks.length + " active Tasks.");
-                Thread.sleep(1000);
+            MonitorEntry[] snapshot;
+            synchronized (lock) {
+                snapshot = registeredTasks;   //save to avoid races
             }
+
+            for (MonitorEntry entry : snapshot) {
+                if (entry.getFreq() == Frequency.high && Duration.between(entry.lastChecked, Instant.now()).toMinutes() > 1) {
+                    scanAndcheck(entry);
+                }
+                if (entry.getFreq() == Frequency.mid && Duration.between(entry.lastChecked, Instant.now()).toHours() > 1) {
+                    scanAndcheck(entry);
+                }
+                if (entry.getFreq() == Frequency.low && Duration.between(entry.lastChecked, Instant.now()).toHours() > 5) {
+                    scanAndcheck(entry);
+                }
+                //System.out.println("Task execution checked for " + registeredTasks.length + " active Tasks.");
+            }
+            Thread.sleep(1000);
+            
         }
         running = false;
 
+    }
+
+    // Return the index of a task matching url and frequency, or -1 if none exists.
+    public int existingTask(String url, Frequency freq){
+        synchronized(lock) {
+            for (int i = 0; i < registeredTasks.length; i++) {
+                if (Objects.equals(registeredTasks[i].getUrl(), url) && Objects.equals(registeredTasks[i].getFreq(), freq)) {
+                    return i;
+                }
+            }
+        }
+        return -1;
+    }
+
+    // Subscribe a user to a url: reuse the matching task if it exists, otherwise create one.
+    public void addSubscription(String url, Frequency freq, User user) {
+        int posExisting = existingTask(url, freq);
+        synchronized(lock) {
+            if (posExisting >= 0) {
+                registeredTasks[posExisting].addUser(user);
+            } else {
+                int idx = addTask(new MonitorEntry(url, freq));
+                registeredTasks[idx].addUser(user);
+            }
+        }
+    }
+
+    // Unsubscribe a user from a url; drops the whole task once it has no subscribers left.
+    public void removeSubscription(String url, Frequency freq, User user) throws Exception {
+        int index = existingTask(url, freq);
+        synchronized(lock) {
+            if (registeredTasks[index].getUsercount() >= 1) {
+                registeredTasks[index].removeUser(user);
+            }
+
+            if (registeredTasks[index].getUsercount() == 0) {
+                removeTask(index);
+            }
+        }
     }
 }
