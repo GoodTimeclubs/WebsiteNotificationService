@@ -9,8 +9,6 @@ public class CheckDifference {
             return false;
         }
         if(!(entry.getLastScanHash().equals(entry.getNewScanHash()))){
-            Notify not = new Notify();
-            not.sendNotification(entry);
 
             System.out.println("Difference fond for url" + entry.getUrl());
 

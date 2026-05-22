@@ -5,16 +5,14 @@ import java.util.Arrays;
 public class MonitorEntry {
     private String url;
     private Frequency freq;
-    private INotificationChannel communicationChannel;
     private String lastScanHash;
     private String newScanHash;
     public Instant lastChecked;
     public User[] subscribedUsers;
 
-    public MonitorEntry(String url, Frequency freq, INotificationChannel channel){
+    public MonitorEntry(String url, Frequency freq){
         this.url = url;
         this.freq = freq;
-        this.communicationChannel = channel;
         this.subscribedUsers = new User[0];
         this.lastChecked = Instant.MIN;
     }
@@ -35,13 +33,6 @@ public class MonitorEntry {
         this.freq = freq;
     }
 
-    public INotificationChannel getCommunicationChannel() {
-        return communicationChannel;
-    }
-
-    public void setCommunicationChannel(INotificationChannel communicationChannel) {
-        this.communicationChannel = communicationChannel;
-    }
 
     public String getLastScanHash() {
         return lastScanHash;
@@ -85,5 +76,15 @@ public class MonitorEntry {
         else {
             throw new Exception("The user you are trying to delete was not found.");
         }
+    }
+
+    public void notifyObservers(){
+        for (int i = 0; i < subscribedUsers.length;i++){
+            subscribedUsers[i].update(this.url);
+        }
+    }
+
+    public int getUsercount(){
+        return subscribedUsers.length;
     }
 }

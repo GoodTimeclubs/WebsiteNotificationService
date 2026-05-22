@@ -3,13 +3,14 @@ import java.security.NoSuchAlgorithmException;
 
 // End-user of the service; holds contact data and manages their URL subscriptions.
 public class User {
-    private MonitorEntry[] subscribed;
     private String mailAddress;
     private String phone;
+    INotificationChannel notChan;
 
-    public User(String mailAddress, String phone){
+    public User(String mailAddress, String phone, INotificationChannel notChan){
         this.mailAddress = mailAddress;
         this.phone = phone;
+        this.notChan = notChan;
     }
 
     public String getMailAddress() {
@@ -28,16 +29,8 @@ public class User {
         this.phone = phone;
     }
 
-    // Subscribe this user to a URL and register the monitoring task with the scheduler.
-    public void addSubscription(String url, Frequency freq, INotificationChannel channel) throws IOException, NoSuchAlgorithmException, InterruptedException {
-        MonitorEntry entry = new MonitorEntry(url, freq, channel);
-        entry.addUser(this);
-        TaskScheduler.getInstance().addTask(entry);
+    public void update(String url){
+        notChan.send(this,url);
     }
 
-    // Cancel a subscription matching the given URL/frequency/channel triple.
-    public void removeSubscription(String url, Frequency freq, INotificationChannel channel){
-        MonitorEntry entry = new MonitorEntry(url, freq, channel);
-        TaskScheduler.getInstance().removeTask(entry);
-    }
 }
