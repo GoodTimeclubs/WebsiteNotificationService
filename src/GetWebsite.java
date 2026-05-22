@@ -29,9 +29,6 @@ public class GetWebsite {
             byte[] digest = md.digest(response.body().getBytes(StandardCharsets.UTF_8));
 
             toscan.setNewScanHash(HexFormat.of().formatHex(digest));
-
-            CheckDifference check = new CheckDifference();
-            check.checkHashDifference(toscan);
         }
         System.out.println("Scan completed. Got code " + response.statusCode());
 

@@ -3,18 +3,16 @@ import java.util.Arrays;
 
 // One watched URL: scan settings, last/new content hashes, and the users to notify on change.
 public class MonitorEntry {
-    private String url;
-    private Frequency freq;
-    private INotificationChannel communicationChannel;
+    private final String url;
+    private final Frequency freq;
     private String lastScanHash;
     private String newScanHash;
     public Instant lastChecked;
     public User[] subscribedUsers;
 
-    public MonitorEntry(String url, Frequency freq, INotificationChannel channel){
+    public MonitorEntry(String url, Frequency freq){
         this.url = url;
         this.freq = freq;
-        this.communicationChannel = channel;
         this.subscribedUsers = new User[0];
         this.lastChecked = Instant.MIN;
     }
@@ -23,24 +21,8 @@ public class MonitorEntry {
         return url;
     }
 
-    public void setUrl(String url) {
-        this.url = url;
-    }
-
     public Frequency getFreq() {
         return freq;
-    }
-
-    public void setFreq(Frequency freq) {
-        this.freq = freq;
-    }
-
-    public INotificationChannel getCommunicationChannel() {
-        return communicationChannel;
-    }
-
-    public void setCommunicationChannel(INotificationChannel communicationChannel) {
-        this.communicationChannel = communicationChannel;
     }
 
     public String getLastScanHash() {
@@ -76,7 +58,7 @@ public class MonitorEntry {
         }
 
         if (index != -1){
-            for (int i = 0; i < subscribedUsers.length - index; i++){
+            for (int i = 0; i < subscribedUsers.length - index-1; i++){
                 subscribedUsers[i+index] = subscribedUsers[i+index+1];
             }
 
@@ -85,5 +67,16 @@ public class MonitorEntry {
         else {
             throw new Exception("The user you are trying to delete was not found.");
         }
+    }
+
+    // Notify every subscribed user that this entry's URL has changed (observer pattern).
+    public void notifyObservers(){
+        for (User subscribedUser : subscribedUsers) {
+            subscribedUser.update(this.url);
+        }
+    }
+
+    public int getUsercount(){
+        return subscribedUsers.length;
     }
 }
