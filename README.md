@@ -47,6 +47,9 @@ the channel they chose.
 | `GetWebsite`           | Performs the HTTP GET and stores the new response body.       |
 | `CheckDifference`      | Delegates to the entry's `IContentType`; returns whether the page changed. |
 | `IContentType`         | Strategy contract for comparing two scans (`IdenticalHtml`/`Text`/`Size`). |
+| `IdenticalHtml`        | Detection strategy: byte-for-byte comparison of the full raw HTML. |
+| `IdenticalText`        | Detection strategy: compares visible text only (HTML stripped via Jsoup). |
+| `IdenticalSize`        | Detection strategy: flags a change only when the response length differs. |
 | `INotificationChannel` | Common contract for delivery channels.                        |
 | `MailChannel`          | Sends notification via e-mail (stub).                         |
 | `SmsChannel`           | Sends notification via SMS (stub).                            |
