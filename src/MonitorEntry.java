@@ -5,14 +5,19 @@ import java.util.Arrays;
 public class MonitorEntry {
     private final String url;
     private final Frequency freq;
-    private String lastScanHash;
-    private String newScanHash;
+
+
+
+    private final IContentType checkType;
+    private String lastScan;
+    private String newScan;
     public Instant lastChecked;
     public User[] subscribedUsers;
 
-    public MonitorEntry(String url, Frequency freq){
+    public MonitorEntry(String url, Frequency freq, IContentType checkType){
         this.url = url;
         this.freq = freq;
+        this.checkType = checkType;
         this.subscribedUsers = new User[0];
         this.lastChecked = Instant.MIN;
     }
@@ -25,20 +30,24 @@ public class MonitorEntry {
         return freq;
     }
 
-    public String getLastScanHash() {
-        return lastScanHash;
+    public String getLastScan() {
+        return lastScan;
     }
 
-    public void setLastScanHash(String lastScanHash) {
-        this.lastScanHash = lastScanHash;
+    public void setLastScan(String lastScan) {
+        this.lastScan = lastScan;
     }
 
-    public String getNewScanHash() {
-        return newScanHash;
+    public String getNewScan() {
+        return newScan;
     }
 
-    public void setNewScanHash(String newScanHash) {
-        this.newScanHash = newScanHash;
+    public void setNewScan(String newScan) {
+        this.newScan = newScan;
+    }
+
+    public IContentType getCheckType() {
+        return checkType;
     }
     
     // Append a subscriber to the notification list.
