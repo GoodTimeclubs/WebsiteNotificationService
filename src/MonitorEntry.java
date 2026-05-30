@@ -1,7 +1,7 @@
 import java.time.Instant;
 import java.util.Arrays;
 
-// One watched URL: scan settings, last/new content hashes, and the users to notify on change.
+// One watched URL: scan settings, last/new response bodies, and the users to notify on change.
 public class MonitorEntry {
     private final String url;
     private final Frequency freq;

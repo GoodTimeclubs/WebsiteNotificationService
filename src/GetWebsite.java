@@ -5,10 +5,10 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 
 
-// Fetches a URL via HTTP and stores body for change detection.
+// Fetches a URL via HTTP and stores the response body on the entry for change detection.
 public class GetWebsite {
 
-    // Performs one scan: GET the URL, hand off to CheckDifference.
+    // Performs one scan: GET the URL and roll lastScan/newScan forward on a 200 response.
     public void startScanner(MonitorEntry toscan) throws IOException, InterruptedException{
         System.out.println("Starting scan for url: " + toscan.getUrl());
         HttpClient client = HttpClient.newHttpClient();

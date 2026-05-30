@@ -1,4 +1,4 @@
-// Compares the stored vs. new content hash to decide whether a page changed.
+// Delegates to the entry's IContentType strategy to decide whether a page changed.
 public class CheckDifference {
 
     // Returns true if the page changed since the last scan; false on the first (baseline) scan.

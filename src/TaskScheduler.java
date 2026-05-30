@@ -64,7 +64,7 @@ public class TaskScheduler {
         }
     }
 
-    // Scan one entry, store its new hash, and notify subscribers if the content changed.
+    // Scan one entry, refresh its stored content, and notify subscribers if it changed.
     public void scanAndcheck(MonitorEntry entry) throws IOException, InterruptedException {
         GetWebsite scaner = new GetWebsite();
         CheckDifference check = new CheckDifference();
@@ -78,7 +78,7 @@ public class TaskScheduler {
     }
 
     // Main loop: polls each task and triggers a scan once its frequency interval elapsed.
-    public void start() throws IOException, NoSuchAlgorithmException, InterruptedException {
+    public void start() throws IOException, InterruptedException {
         while (!stop) {
             MonitorEntry[] snapshot;
             synchronized (lock) {
