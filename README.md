@@ -3,10 +3,11 @@
 A small Java service that periodically scans websites for content changes and
 notifies subscribed users through pluggable channels (Mail, SMS, WhatsApp).
 
-Change detection is done by comparing SHA-256 hashes of the page body between
-consecutive scans. As soon as a hash changes, the monitor entry notifies its
-subscribers via the **observer pattern** — each user is updated and delivers the
-message through the channel they chose.
+Change detection is done by comparing the page body between consecutive scans
+using a pluggable strategy (full HTML, visible text only, or response size). As
+soon as a difference is detected, the monitor entry notifies its subscribers via
+the **observer pattern** — each user is updated and delivers the message through
+the channel they chose.
 
 ---
 
@@ -19,7 +20,9 @@ message through the channel they chose.
   - `high` — every minute
   - `mid`  — every hour
   - `low`  — every 5 hours
-- **Hash-based change detection** using SHA-256 over the HTTP response body.
+- **Pluggable change detection** via the `IContentType` strategy interface —
+  compare the full HTML (`IdenticalHtml`), visible text (`IdenticalText`), or
+  response size (`IdenticalSize`).
 - **Observer-based notifications**: a `MonitorEntry` notifies its subscribed
   `User`s on change, and each user delivers via their own channel.
 - **Thread-safe singleton scheduler** that auto-starts on the first registered
@@ -32,36 +35,21 @@ message through the channel they chose.
 
 ## Architecture
 
-```
-        +-----------+      addSubscription       +----------------+
-        |   User    | -------------------------> |  TaskScheduler |
-        +-----------+                            +----------------+
-              ^                                          |
-              | update() (observer)                      | per Frequency
-              |                                          v
-       +-------------+    notifyObservers   +--------------+   GET   +-----+
-       | MonitorEntry | <----- on change ---| scanAndcheck |<------- | URL |
-       +-------------+                      +--------------+         +-----+
-              |                                    |
-              | send()                             | hash diff
-              v                                     v
-   +----------------------+              +------------------+
-   | INotificationChannel |              |  CheckDifference |
-   +----------------------+              +------------------+
-        ^   ^   ^
-        |   |   |
-   Mail SMS WhatsApp
-```
+![Architecture model](Model.png)
 
 | Class                  | Responsibility                                                |
 | ---------------------- | ------------------------------------------------------------- |
 | `Main`                 | Entry point — wires up sample subscriptions.                  |
 | `User`                 | Holds contact data and channel; observer that delivers on `update()`. |
-| `MonitorEntry`         | One watched URL: settings, hashes, subscriber list, `notifyObservers()`. |
+| `MonitorEntry`         | One watched URL: settings, scan bodies, subscriber list, `notifyObservers()`. |
 | `Frequency`            | Scan-interval tiers (`low`, `mid`, `high`).                   |
 | `TaskScheduler`        | Thread-safe singleton polling loop; owns all monitor entries. |
-| `GetWebsite`           | Performs the HTTP GET and computes the new content hash.      |
-| `CheckDifference`      | Compares old vs. new hash; returns whether the page changed.  |
+| `GetWebsite`           | Performs the HTTP GET and stores the new response body.       |
+| `CheckDifference`      | Delegates to the entry's `IContentType`; returns whether the page changed. |
+| `IContentType`         | Strategy contract for comparing two scans (`IdenticalHtml`/`Text`/`Size`). |
+| `IdenticalHtml`        | Detection strategy: byte-for-byte comparison of the full raw HTML. |
+| `IdenticalText`        | Detection strategy: compares visible text only (HTML stripped via Jsoup). |
+| `IdenticalSize`        | Detection strategy: flags a change only when the response length differs. |
 | `INotificationChannel` | Common contract for delivery channels.                        |
 | `MailChannel`          | Sends notification via e-mail (stub).                         |
 | `SmsChannel`           | Sends notification via SMS (stub).                            |
@@ -107,7 +95,7 @@ carrying their own channel:
 ```java
 User test1 = new User("test@mail.com",  "+123456789",  new MailChannel());
 TaskScheduler scheduler = TaskScheduler.getInstance();
-scheduler.addSubscription("http://bengutzeit.de", Frequency.high, test1);
+scheduler.addSubscription("http://bengutzeit.de", Frequency.high, test1, new IdenticalHtml());
 ```
 
 Expected console output (first scan establishes the baseline, later scans
@@ -145,7 +133,7 @@ public class SlackChannel implements INotificationChannel {
 }
 
 User user = new User("me@example.com", "+49123", new SlackChannel());
-TaskScheduler.getInstance().addSubscription("https://example.com", Frequency.mid, user);
+TaskScheduler.getInstance().addSubscription("https://example.com", Frequency.mid, user, new IdenticalText());
 ```
 
 ---
@@ -165,6 +153,10 @@ WebsiteNotificationService/
     ├── TaskScheduler.java
     ├── GetWebsite.java
     ├── CheckDifference.java
+    ├── IContentType.java
+    ├── IdenticalHtml.java
+    ├── IdenticalText.java
+    ├── IdenticalSize.java
     ├── INotificationChannel.java
     ├── MailChannel.java
     ├── SmsChannel.java
@@ -179,7 +171,7 @@ WebsiteNotificationService/
 - The scan loop runs on a single background thread; for many entries a
   `ScheduledExecutorService` (one task per entry) would scale better.
 - Subscriptions are kept in memory only; no persistence layer yet.
-- Only successful (`HTTP 200`) responses are hashed; redirects and error pages
+- Only successful (`HTTP 200`) responses are compared; redirects and error pages
   are currently ignored.
 - There is no built-in shutdown hook; the loop is stopped by setting
   `scheduler.stop = true`.
@@ -187,6 +179,22 @@ WebsiteNotificationService/
 ---
 
 ## Changelog
+
+### [Unreleased] — 2026-05-30
+
+#### Added
+- Pluggable change-detection strategies behind the `IContentType` interface:
+  `IdenticalHtml` (full HTML), `IdenticalText` (visible text via Jsoup) and
+  `IdenticalSize` (response length). Each subscription picks its own strategy.
+
+#### Changed
+- `addSubscription` / `removeSubscription` now take an `IContentType` argument,
+  and a task is matched by URL **and** frequency **and** content type.
+- Doc comments and README updated to reflect the strategy-based detection.
+
+#### Removed
+- SHA-256 hashing of the response body — replaced by the `IContentType`
+  strategies that compare the stored bodies directly.
 
 ### [Unreleased] — 2026-05-23
 

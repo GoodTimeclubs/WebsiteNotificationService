@@ -64,8 +64,8 @@ public class TaskScheduler {
         }
     }
 
-    // Scan one entry, store its new hash, and notify subscribers if the content changed.
-    public void scanAndcheck(MonitorEntry entry) throws IOException, NoSuchAlgorithmException, InterruptedException {
+    // Scan one entry, refresh its stored content, and notify subscribers if it changed.
+    public void scanAndcheck(MonitorEntry entry) throws IOException, InterruptedException {
         GetWebsite scaner = new GetWebsite();
         CheckDifference check = new CheckDifference();
 
@@ -78,7 +78,7 @@ public class TaskScheduler {
     }
 
     // Main loop: polls each task and triggers a scan once its frequency interval elapsed.
-    public void start() throws IOException, NoSuchAlgorithmException, InterruptedException {
+    public void start() throws IOException, InterruptedException {
         while (!stop) {
             MonitorEntry[] snapshot;
             synchronized (lock) {
@@ -105,10 +105,10 @@ public class TaskScheduler {
     }
 
     // Return the index of a task matching url and frequency, or -1 if none exists.
-    public int existingTask(String url, Frequency freq){
+    public int existingTask(String url, Frequency freq,  IContentType content){
         synchronized(lock) {
             for (int i = 0; i < registeredTasks.length; i++) {
-                if (Objects.equals(registeredTasks[i].getUrl(), url) && Objects.equals(registeredTasks[i].getFreq(), freq)) {
+                if (Objects.equals(registeredTasks[i].getUrl(), url) && Objects.equals(registeredTasks[i].getFreq(), freq)  && Objects.equals(registeredTasks[i].getCheckType(), content)){
                     return i;
                 }
             }
@@ -117,21 +117,21 @@ public class TaskScheduler {
     }
 
     // Subscribe a user to a url: reuse the matching task if it exists, otherwise create one.
-    public void addSubscription(String url, Frequency freq, User user) {
-        int posExisting = existingTask(url, freq);
+    public void addSubscription(String url, Frequency freq, User user, IContentType content) {
+        int posExisting = existingTask(url, freq, content);
         synchronized(lock) {
             if (posExisting >= 0) {
                 registeredTasks[posExisting].addUser(user);
             } else {
-                int idx = addTask(new MonitorEntry(url, freq));
+                int idx = addTask(new MonitorEntry(url, freq, content));
                 registeredTasks[idx].addUser(user);
             }
         }
     }
 
     // Unsubscribe a user from a url; drops the whole task once it has no subscribers left.
-    public void removeSubscription(String url, Frequency freq, User user) throws Exception {
-        int index = existingTask(url, freq);
+    public void removeSubscription(String url, Frequency freq, User user, IContentType content) throws Exception {
+        int index = existingTask(url, freq, content);
         synchronized(lock) {
             if (registeredTasks[index].getUsercount() >= 1) {
                 registeredTasks[index].removeUser(user);
