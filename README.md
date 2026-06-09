@@ -26,8 +26,9 @@ the channel they chose.
 - **Observer-based notifications**: a `MonitorEntry` notifies its subscribed
   `User`s on change, and each user delivers via their own channel.
 - **Thread-safe singleton scheduler** that auto-starts on the first registered
-  task, runs its polling loop on a dedicated background thread, and multiplexes
-  all monitor entries in that single loop.
+  task and polls all monitor entries on a dedicated background thread. Each due
+  scan is dispatched to its own worker thread, with a per-entry guard so the same
+  entry is never scanned by two threads at once.
 - **Per-user subscriptions**: a user can subscribe to many URLs, and many users
   can share the same URL/frequency pair.
 
@@ -43,7 +44,7 @@ the channel they chose.
 | `User`                 | Holds contact data and channel; observer that delivers on `update()`. |
 | `MonitorEntry`         | One watched URL: settings, scan bodies, subscriber list, `notifyObservers()`. |
 | `Frequency`            | Scan-interval tiers (`low`, `mid`, `high`).                   |
-| `TaskScheduler`        | Thread-safe singleton polling loop; owns all monitor entries. |
+| `TaskScheduler`        | Thread-safe singleton polling loop; owns all monitor entries and dispatches each due scan to a worker thread. |
 | `GetWebsite`           | Performs the HTTP GET and stores the new response body.       |
 | `CheckDifference`      | Delegates to the entry's `IContentType`; returns whether the page changed. |
 | `IContentType`         | Strategy contract for comparing two scans (`IdenticalHtml`/`Text`/`Size`). |
@@ -95,25 +96,25 @@ carrying their own channel:
 ```java
 User test1 = new User("test@mail.com",  "+123456789",  new MailChannel());
 TaskScheduler scheduler = TaskScheduler.getInstance();
-scheduler.addSubscription("http://bengutzeit.de", Frequency.high, test1, new IdenticalHtml());
+scheduler.addSubscription("https://bengutzeit.de", Frequency.high, test1, new IdenticalHtml());
 ```
 
 Expected console output (first scan establishes the baseline, later scans
 report whether the page changed):
 
 ```
-Starting scan for url: http://bengutzeit.de
+Starting scan for url: https://bengutzeit.de
 Scan completed. Got code 200
-First scan for http://bengutzeit.de — baseline stored, no notification.
+First scan for https://bengutzeit.de — baseline stored, no notification.
 ...
-Website http://bengutzeit.de has not changed!
+Website https://bengutzeit.de has not changed!
 ```
 
 When a change is detected, the chosen channel prints something like:
 
 ```
 Empfänger: test@mail.com
-Änderung an der Website: http://bengutzeit.de/
+Änderung an der Website: https://bengutzeit.de/
 Benachrichtigung über Mail channel
 ```
 
@@ -168,8 +169,9 @@ WebsiteNotificationService/
 ## Known limitations / roadmap
 
 - Channel classes are stub implementations (console output only).
-- The scan loop runs on a single background thread; for many entries a
-  `ScheduledExecutorService` (one task per entry) would scale better.
+- The polling loop runs on one background thread and spawns a short-lived raw
+  thread per due scan; a pooled `ScheduledExecutorService` would scale better and
+  avoid unbounded thread creation.
 - Subscriptions are kept in memory only; no persistence layer yet.
 - Only successful (`HTTP 200`) responses are compared; redirects and error pages
   are currently ignored.
@@ -179,6 +181,28 @@ WebsiteNotificationService/
 ---
 
 ## Changelog
+
+### [Unreleased] — 2026-06-09
+
+#### Changed
+- Scans now run concurrently: the polling loop dispatches each due entry to its
+  own worker thread instead of scanning inline, so a slow fetch no longer stalls
+  the loop.
+
+#### Added
+- Per-entry `AtomicBoolean` guard (`MonitorEntry.scanning`) so the same entry is
+  never scanned by two threads at once.
+- `volatile` on `lastChecked` and `subscribedUsers`, plus copy-on-write for the
+  subscriber list, so the loop and scan workers share state safely.
+
+#### Fixed
+- Thread storm / duplicate concurrent scans of the same entry: the eligibility
+  clock is reset before the worker starts, and the guard blocks any overlap.
+- Data race on the stored scan bodies (`lastScan` / `newScan`) when scans overlapped.
+- Subscriber-list races: a possible `NullPointerException` on `addUser` and an
+  inconsistent snapshot on `removeUser`, both from mutating the live array.
+- A per-scan `IOException` now only ends its own worker (logged) instead of
+  killing the whole polling loop; `InterruptedException` restores the interrupt flag.
 
 ### [Unreleased] — 2026-05-30
 

@@ -9,7 +9,7 @@ void main(){
 
     TaskScheduler scheduler = TaskScheduler.getInstance();
 
-    scheduler.addSubscription("http://bengutzeit.de", Frequency.high, test1, new IdenticalHtml());
+    scheduler.addSubscription("https://bengutzeit.de", Frequency.high, test1, new IdenticalHtml());
     scheduler.addSubscription("https://www.tagesschau.de/",Frequency.high,test2, new IdenticalText());
     scheduler.addSubscription("https://de.wikipedia.org/wiki/Tagesschau_(ARD)",Frequency.high,test3,new IdenticalSize());
 

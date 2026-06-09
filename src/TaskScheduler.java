@@ -1,5 +1,4 @@
 import java.io.IOException;
-import java.security.NoSuchAlgorithmException;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Arrays;
@@ -7,13 +6,15 @@ import java.util.Objects;
 
 
 // Singleton scheduler that periodically scans every registered MonitorEntry per its Frequency.
+// The polling loop runs on one background thread and dispatches each due scan to its own worker thread.
 public class TaskScheduler {
     private MonitorEntry[] registeredTasks;
+    // volatile: shared between caller threads and the polling-loop thread.
     public volatile boolean stop = false;
     public volatile boolean running = false;
 
     private static TaskScheduler instance;
-    private final Object lock = new Object();
+    private final Object lock = new Object();   // guards the registeredTasks array
 
     private TaskScheduler() {
         this.registeredTasks = new MonitorEntry[0];
@@ -65,20 +66,30 @@ public class TaskScheduler {
     }
 
     // Scan one entry, refresh its stored content, and notify subscribers if it changed.
+    // Guarded so the same entry is never scanned by two threads at once.
     public void scanAndcheck(MonitorEntry entry) throws IOException, InterruptedException {
-        GetWebsite scaner = new GetWebsite();
-        CheckDifference check = new CheckDifference();
-
-        scaner.startScanner(entry);
-        entry.lastChecked = Instant.now();
-        if (check.checkHashDifference(entry)) {
-            entry.notifyObservers();
+        // skip if a scan for this entry is already in flight; the winner releases the flag in finally
+        if (!entry.scanning.compareAndSet(false,true)) {
+            return;
         }
+        try {
+            GetWebsite scanner = new GetWebsite();
+            CheckDifference check = new CheckDifference();
+            scanner.startScanner(entry);
+            entry.lastChecked = Instant.now();
+            if (check.checkHashDifference(entry)) {
+                entry.notifyObservers();
+            }
+        } finally {
+            entry.scanning.set(false);
+        }
+
 
     }
 
-    // Main loop: polls each task and triggers a scan once its frequency interval elapsed.
-    public void start() throws IOException, InterruptedException {
+    // Main loop: polls each task every second and dispatches a scan (on its own thread) once a
+    // task's frequency interval has elapsed; never scans inline, so one slow fetch can't stall the loop.
+    public void start() throws InterruptedException {
         while (!stop) {
             MonitorEntry[] snapshot;
             synchronized (lock) {
@@ -87,13 +98,13 @@ public class TaskScheduler {
 
             for (MonitorEntry entry : snapshot) {
                 if (entry.getFreq() == Frequency.high && Duration.between(entry.lastChecked, Instant.now()).toMinutes() > 1) {
-                    scanAndcheck(entry);
+                    startScanThread(entry);
                 }
                 if (entry.getFreq() == Frequency.mid && Duration.between(entry.lastChecked, Instant.now()).toHours() > 1) {
-                    scanAndcheck(entry);
+                    startScanThread(entry);
                 }
                 if (entry.getFreq() == Frequency.low && Duration.between(entry.lastChecked, Instant.now()).toHours() > 5) {
-                    scanAndcheck(entry);
+                    startScanThread(entry);
                 }
                 //System.out.println("Task execution checked for " + registeredTasks.length + " active Tasks.");
             }
@@ -102,6 +113,24 @@ public class TaskScheduler {
         }
         running = false;
 
+    }
+
+    // Bump lastChecked up front so the 1s poll won't re-trigger this entry while its scan is in flight,
+    // then run the scan on a dedicated thread. A failed scan only ends its own worker; the loop keeps going.
+    private void startScanThread (MonitorEntry entry){
+        entry.lastChecked = Instant.now();
+        new Thread(() -> {
+            try {
+                scanAndcheck(entry);
+            } catch (IOException e) {
+                // per-scan failure (e.g. site unreachable): log and let this worker end
+                System.err.println("Scan failed for " +entry.getUrl());
+                e.printStackTrace();
+            }catch (InterruptedException e){
+                // restore the interrupt flag that catching cleared
+                Thread.currentThread().interrupt();
+            }
+        }).start();
     }
 
     // Return the index of a task matching url and frequency, or -1 if none exists.
