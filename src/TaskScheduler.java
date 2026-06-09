@@ -65,6 +65,15 @@ public class TaskScheduler {
         }
     }
 
+    // Read-only snapshot of the currently registered tasks, for UI/inspection consumers.
+    // Returns a copy taken under the lock so callers never observe a stale or mid-mutation array
+    // (registeredTasks itself is not volatile and is rebuilt copy-on-write under this lock).
+    public MonitorEntry[] getRegisteredTasks() {
+        synchronized (lock) {
+            return Arrays.copyOf(registeredTasks, registeredTasks.length);
+        }
+    }
+
     // Scan one entry, refresh its stored content, and notify subscribers if it changed.
     // Guarded so the same entry is never scanned by two threads at once.
     public void scanAndcheck(MonitorEntry entry) throws IOException, InterruptedException {
