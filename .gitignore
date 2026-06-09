@@ -3,6 +3,7 @@ out/
 !**/src/main/**/out/
 !**/src/test/**/out/
 .kotlin
+uiDesigner.xml
 
 ### Eclipse ###
 .apt_generated
@@ -29,3 +30,5 @@ bin/
 ### Mac OS ###
 .DS_Store
 lib/ant-junit-1.6.5.jar
+
+
