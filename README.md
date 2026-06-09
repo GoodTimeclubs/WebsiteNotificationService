@@ -11,8 +11,39 @@ the channel they chose.
 
 ---
 
+## Graphical interface (GUI)
+
+A desktop GUI (Java Swing) bundles user management, entry creation and the live
+console output into a single window.
+
+![Website Notification Service GUI](gui.png)
+
+> **This graphical interface (`src/Gui.java`) was designed and implemented by
+> Claude (Anthropic's Claude Code).** It is a self-contained, hand-written Swing
+> UI and is **not** part of the original coursework backend — the only backend
+> change it required was adding a read-only `TaskScheduler.getRegisteredTasks()`
+> snapshot.
+
+- **Users** (left) — add or remove users and choose their notification channel
+  (Mail / SMS / WhatsApp).
+- **Website Entries** (middle) — create a monitored entry from a user, a URL, a
+  scan interval and a change-detection strategy. Each entry is its own rounded
+  card listing its subscribers, the last-checked time and a **live countdown to
+  the next scan**.
+- **Console** (right) — mirrors `System.out` / `System.err` in real time
+  (errors in red), so the scheduler's scan log is visible inside the app.
+
+The UI drives the existing backend only through `TaskScheduler`
+(`addSubscription` / `removeSubscription` / `getRegisteredTasks`) and keeps no
+duplicate business logic. See [Run the GUI](#run-the-gui) below.
+
+---
+
 ## Features
 
+- **Desktop GUI (built by Claude)** — a Swing front-end to manage users, create
+  monitored entries and watch the live console; see
+  [Graphical interface](#graphical-interface-gui).
 - **Multiple notification channels** — Mail, SMS and WhatsApp out of the box,
   unified behind the `INotificationChannel` interface so new channels can be
   added with a single class.
@@ -41,10 +72,11 @@ the channel they chose.
 | Class                  | Responsibility                                                |
 | ---------------------- | ------------------------------------------------------------- |
 | `Main`                 | Entry point — wires up sample subscriptions.                  |
+| `Gui`                  | **Swing desktop UI — built by Claude.** User management, entry creation, live console; drives the backend via `TaskScheduler`. Has its own `main`. |
 | `User`                 | Holds contact data and channel; observer that delivers on `update()`. |
 | `MonitorEntry`         | One watched URL: settings, scan bodies, subscriber list, `notifyObservers()`. |
 | `Frequency`            | Scan-interval tiers (`low`, `mid`, `high`).                   |
-| `TaskScheduler`        | Thread-safe singleton polling loop; owns all monitor entries and dispatches each due scan to a worker thread. |
+| `TaskScheduler`        | Thread-safe singleton polling loop; owns all monitor entries and dispatches each due scan to a worker thread. Exposes a read-only `getRegisteredTasks()` snapshot for the GUI. |
 | `GetWebsite`           | Performs the HTTP GET and stores the new response body.       |
 | `CheckDifference`      | Delegates to the entry's `IContentType`; returns whether the page changed. |
 | `IContentType`         | Strategy contract for comparing two scans (`IdenticalHtml`/`Text`/`Size`). |
@@ -65,7 +97,10 @@ the channel they chose.
 ## Requirements
 
 - **JDK 21+** — the code uses Java 21 features such as instance `main` methods
-  (`void main()` in `Main.java`) and `java.net.http.HttpClient`.
+  (`void main()` in `Main.java`) and `java.net.http.HttpClient`. (Developed and
+  tested on JDK 26.)
+- **jsoup** — bundled in `lib/jsoup-1.22.2.jar`; required on the classpath by the
+  `IdenticalText` strategy when compiling and running.
 - No external build tool is required; the project ships as a plain IntelliJ
   module (`.iml`).
 
@@ -76,16 +111,31 @@ the channel they chose.
 ### Run from IntelliJ
 
 1. Open the project folder in IntelliJ IDEA.
-2. Right-click `src/Main.java` and choose **Run 'Main'**.
+2. **GUI:** right-click `src/Gui.java` and choose **Run 'Gui'**.
+3. **Headless demo:** right-click `src/Main.java` and choose **Run 'Main'**.
 
-### Run from the command line
+### Run the GUI
+
+`Gui` has its own `main`, separate from the headless `Main` demo. jsoup must be
+on the classpath (Windows uses `;` as the separator, Linux/macOS use `:`):
 
 ```bash
-# Compile
-javac -d out src/*.java
+# Compile (jsoup is required by the IdenticalText strategy)
+javac -encoding UTF-8 -d out -cp lib/jsoup-1.22.2.jar src/*.java
 
-# Run
-java -cp out Main
+# Run the GUI — Windows
+java -cp "out;lib/jsoup-1.22.2.jar" Gui
+# Run the GUI — Linux/macOS
+java -cp "out:lib/jsoup-1.22.2.jar" Gui
+```
+
+### Run the headless demo
+
+```bash
+# Windows
+java -cp "out;lib/jsoup-1.22.2.jar" Main
+# Linux/macOS
+java -cp "out:lib/jsoup-1.22.2.jar" Main
 ```
 
 ### Sample run
@@ -144,9 +194,14 @@ TaskScheduler.getInstance().addSubscription("https://example.com", Frequency.mid
 ```
 WebsiteNotificationService/
 ├── README.md
+├── Model.png                       # architecture diagram
+├── gui.png                         # GUI screenshot (UI built by Claude)
 ├── WebsiteNotificationService.iml
+├── lib/
+│   └── jsoup-1.22.2.jar
 ├── out/                            # compiled classes (generated)
 └── src/
+    ├── Gui.java                    # Swing desktop UI (built by Claude)
     ├── Main.java
     ├── User.java
     ├── MonitorEntry.java
@@ -181,6 +236,23 @@ WebsiteNotificationService/
 ---
 
 ## Changelog
+
+### [Unreleased] — 2026-06-10 (GUI)
+
+#### Added
+- **Graphical user interface (`src/Gui.java`), designed and implemented by Claude
+  (Anthropic's Claude Code).** A hand-written Swing desktop app: user management,
+  website-entry creation, an overview of entries as rounded cards (each with a
+  live "next scan" countdown and a "last checked" time), and a console panel that
+  mirrors `System.out` / `System.err` in real time. White theme with colourful
+  accents; English UI.
+- `TaskScheduler.getRegisteredTasks()` — a thread-safe snapshot (`Arrays.copyOf`
+  under the existing lock) of the registered tasks, so the GUI renders the live
+  entry list without keeping a second, drift-prone copy.
+
+#### Notes
+- The GUI is launched via its own `Gui` class (`public static void main`),
+  independent of `Main`; no other backend class was modified.
 
 ### [Unreleased] — 2026-06-09
 
