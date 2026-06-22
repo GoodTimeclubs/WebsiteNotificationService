@@ -97,10 +97,12 @@ duplicate business logic. See [Run the GUI](#run-the-gui) below.
 ## Requirements
 
 - **JDK 21+** — the code uses Java 21 features such as instance `main` methods
-  (`void main()` in `Main.java`) and `java.net.http.HttpClient`. (Developed and
-  tested on JDK 26.)
+  (`void main(String[] args)` in `Main.java`) and `java.net.http.HttpClient`.
+  (Developed and tested on JDK 26.)
 - **jsoup** — bundled in `lib/jsoup-1.22.2.jar`; required on the classpath by the
   `IdenticalText` strategy when compiling and running.
+- **Docker (optional)** — to run the headless monitor in a container without a
+  local JDK; see [Run with Docker](#run-with-docker).
 - No external build tool is required; the project ships as a plain IntelliJ
   module (`.iml`).
 
@@ -137,6 +139,26 @@ java -cp "out;lib/jsoup-1.22.2.jar" Main
 # Linux/macOS
 java -cp "out:lib/jsoup-1.22.2.jar" Main
 ```
+
+### Run with Docker
+
+The desktop GUI needs a display and is not container-friendly; the container
+runs the headless `Main`, which takes the **URL to monitor as its first
+argument**. A multi-stage `Dockerfile` is included in the project root — it
+compiles the sources (jsoup on the classpath) and runs `Main` in a slim JRE
+image.
+
+Build the image, then run it with the URL as an argument:
+
+```bash
+docker build -t website-monitor .
+docker run --rm website-monitor https://bengutzeit.de
+```
+
+Because of the exec-form `ENTRYPOINT`, anything appended to `docker run` is
+forwarded to `Main` as `args[0]`. Run without an argument to fall back to the
+built-in demo subscriptions. The channel stubs print to `stdout`, so scan and
+change messages show up in the container output (`docker logs`).
 
 ### Sample run
 
@@ -194,6 +216,7 @@ TaskScheduler.getInstance().addSubscription("https://example.com", Frequency.mid
 ```
 WebsiteNotificationService/
 ├── README.md
+├── Dockerfile                      # headless monitor container (build + run)
 ├── Model.png                       # architecture diagram
 ├── gui.png                         # GUI screenshot (UI built by Claude)
 ├── WebsiteNotificationService.iml
@@ -236,6 +259,20 @@ WebsiteNotificationService/
 ---
 
 ## Changelog
+
+### [Unreleased] — 2026-06-23 (Docker)
+
+#### Added
+- **Docker support for the headless monitor** — a multi-stage `Dockerfile` that
+  compiles the sources (jsoup on the classpath) and runs `Main` in a slim JRE
+  image. The URL to monitor is passed as a container argument
+  (`docker run website-monitor <url>`) and forwarded to `Main` as `args[0]` via
+  the exec-form `ENTRYPOINT`.
+
+#### Changed
+- `Main` reads the URL to monitor from its first argument
+  (`void main(String[] args)`, using `args[0]`) and falls back to the built-in
+  demo subscriptions when no argument is given.
 
 ### [Unreleased] — 2026-06-10 (GUI)
 
