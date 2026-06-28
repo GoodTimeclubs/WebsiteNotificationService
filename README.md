@@ -192,6 +192,45 @@ Benachrichtigung über Mail channel
 
 ---
 
+## Tests
+
+> **The unit tests (`test/EquivalenceClassTest.java`) were designed and
+> implemented by Claude (Anthropic's Claude Code).**
+
+Equivalence-class tests for the change-detection / notification pipeline
+(Exercise 6), written with **JUnit 5 (Jupiter)**. The six cases mirror the
+equivalence classes EC1–EC6: a valid URL/frequency with each valid channel
+(WhatsApp / SMS / Mail), plus the invalid partitions (null channel, null
+frequency, malformed URL).
+
+Because the production classes live in the **default (unnamed) package**, the
+test class does too — types in the unnamed package cannot be imported from a
+named package. The tests use a small `SpyChannel` test double (wrapping the real
+channel) to assert delivery deterministically, without real HTTP, threads or the
+singleton scheduler.
+
+Notable finding: **EC4** documents that a `null` channel currently raises a
+`NullPointerException` in `User.update()` once a change is detected — the code
+has no null-channel guard.
+
+### Run the tests
+
+The JUnit 5 jars are bundled in `lib/`. Easiest is from IntelliJ (right-click
+`test/EquivalenceClassTest.java` → **Run**). From the CLI you additionally need
+the JUnit Platform Console launcher (`junit-platform-console-standalone`, *not*
+bundled):
+
+```bash
+# Compile sources + tests
+javac -encoding UTF-8 -d out -cp "lib/*" src/*.java test/*.java
+
+# Run (Windows ';' separator; Linux/macOS use ':')
+java -jar junit-platform-console-standalone.jar execute \
+  -cp "out;lib/jsoup-1.22.2.jar" --select-class=EquivalenceClassTest
+```
+
+---
+
 ## Adding a new notification channel
 
 Implement `INotificationChannel` and pass an instance into the `User`
@@ -221,8 +260,11 @@ WebsiteNotificationService/
 ├── gui.png                         # GUI screenshot (UI built by Claude)
 ├── WebsiteNotificationService.iml
 ├── lib/
-│   └── jsoup-1.22.2.jar
+│   ├── jsoup-1.22.2.jar
+│   └── junit-*-6.0.0.jar           # JUnit 5 (Jupiter) test dependencies
 ├── out/                            # compiled classes (generated)
+├── test/
+│   └── EquivalenceClassTest.java   # EC1–EC6 unit tests (built by Claude)
 └── src/
     ├── Gui.java                    # Swing desktop UI (built by Claude)
     ├── Main.java
@@ -259,6 +301,22 @@ WebsiteNotificationService/
 ---
 
 ## Changelog
+
+### [Unreleased] — 2026-06-29 (Tests)
+
+#### Added
+- **Equivalence-class unit tests (`test/EquivalenceClassTest.java`), designed and
+  implemented by Claude (Anthropic's Claude Code).** Six JUnit 5 cases covering
+  EC1–EC6 of Exercise 6 (valid URL/frequency with each valid channel; plus null
+  channel, null frequency and malformed URL). A `SpyChannel` test double makes
+  notification delivery deterministic without HTTP, threads or the scheduler.
+- `test/` test source root and the JUnit 5 (Jupiter 6.0.0) dependencies in `lib/`.
+
+#### Notes
+- The tests live in the default (unnamed) package because the production classes
+  do — unnamed-package types cannot be imported from a named package.
+- EC4 documents a missing null-channel guard: a `null` channel currently throws a
+  `NullPointerException` in `User.update()` when a change is detected.
 
 ### [Unreleased] — 2026-06-23 (Docker)
 
